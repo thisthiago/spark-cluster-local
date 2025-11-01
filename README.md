@@ -120,6 +120,16 @@ pip install pyspark==4.0.1 delta-spark==4.0.1
 python spark_connect_local.py
 ```
 
+#### Para ler dados do Amazon S3
+Conect ao container `spark-master` e execute
+```bash
+$SPARK_HOME/sbin/stop-connect-server.sh
+export AWS_ACCESS_KEY_ID=SUA_KEY
+export AWS_SECRET_ACCESS_KEY=SUA_SECRET_KEY
+export AWS_REGION=us-east-2
+$SPARK_HOME/sbin/start-connect-server.sh
+```
+
 **Vantagens do Spark Connect:**
 - Cliente muito mais leve (1.5 MB vs 355 MB)
 - Aplicação roda fora do cluster
@@ -288,7 +298,6 @@ docker exec -it spark-master spark-submit \
   --master spark://spark-master:7077 \
   /apps/seu_app.py
 ```
-
 **Problemas com Java 17:**
 - Spark 4.0 usa Java 17 por padrão
 - Se tiver problemas, verifique compatibilidade das suas bibliotecas
