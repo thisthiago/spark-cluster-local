@@ -4,7 +4,7 @@ FROM eclipse-temurin:17-jre-jammy
 ENV SPARK_VERSION=4.0.1
 ENV HADOOP_VERSION=3.4.1
 ENV DELTA_VERSION=4.0.0
-ENV ICEBERG_VERSION=1.7.1
+ENV ICEBERG_VERSION=1.10.0
 ENV SCALA_VERSION=2.13
 
 # Definir variáveis de ambiente
@@ -47,16 +47,30 @@ RUN wget https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SP
 RUN wget https://repo1.maven.org/maven2/io/delta/delta-spark_${SCALA_VERSION}/${DELTA_VERSION}/delta-spark_${SCALA_VERSION}-${DELTA_VERSION}.jar -P ${SPARK_HOME}/jars/ && \
     wget https://repo1.maven.org/maven2/io/delta/delta-storage/${DELTA_VERSION}/delta-storage-${DELTA_VERSION}.jar -P ${SPARK_HOME}/jars/
 
-# Instalar PySpark e Delta Lake para Python
-RUN pip3 install --no-cache-dir pyspark==${SPARK_VERSION} delta-spark==${DELTA_VERSION}
+# Baixar Apache Iceberg 1.10.0 para Spark 4.0
+RUN wget https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-4.0_${SCALA_VERSION}/${ICEBERG_VERSION}/iceberg-spark-runtime-4.0_${SCALA_VERSION}-${ICEBERG_VERSION}.jar -P ${SPARK_HOME}/jars/
+
+# Copiar JARs customizados (se existirem)
+COPY jars/*.jar $SPARK_HOME/jars/ 
+
+# Baixar AWS SDK v2 (Hadoop 3.4.1 usa AWS SDK v2)
+RUN wget -q -O $SPARK_HOME/jars/bundle-2.23.5.jar \
+    https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.23.5/bundle-2.23.5.jar
+
+# Instalar PySpark e bibliotecas Python
+RUN pip3 install --no-cache-dir \
+    pyspark==${SPARK_VERSION} \
+    delta-spark==${DELTA_VERSION} \
+    pyiceberg
 
 # Criar diretórios necessários
 RUN mkdir -p /tmp/spark-events && \
     mkdir -p ${SPARK_HOME}/work && \
     mkdir -p ${SPARK_HOME}/logs && \
-    mkdir -p /data
+    mkdir -p /data && \
+    mkdir -p /data/iceberg-warehouse
 
-# Configurar Spark 4.0 (ANSI mode agora é padrão)
+# Configurar Spark 4.0 com Delta e Iceberg
 RUN cp ${SPARK_HOME}/conf/spark-defaults.conf.template ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "# Event Logging" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "spark.eventLog.enabled true" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
@@ -64,16 +78,21 @@ RUN cp ${SPARK_HOME}/conf/spark-defaults.conf.template ${SPARK_HOME}/conf/spark-
     echo "spark.history.fs.logDirectory file:///tmp/spark-events" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "# Delta Lake Configuration" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
-    echo "spark.sql.extensions io.delta.sql.DeltaSparkSessionExtension" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "spark.sql.extensions io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "spark.sql.catalog.spark_catalog org.apache.spark.sql.delta.catalog.DeltaCatalog" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
-    echo "# Spark Connect (novo no Spark 4.0)" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "# Iceberg Configuration" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "spark.sql.catalog.iceberg org.apache.iceberg.spark.SparkCatalog" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "spark.sql.catalog.iceberg.type hadoop" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "spark.sql.catalog.iceberg.warehouse /data/iceberg-warehouse" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "# Spark Connect" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "spark.connect.grpc.binding.port 15002" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
-    echo "# ANSI mode (padrão no Spark 4.0)" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
+    echo "# ANSI mode" >> ${SPARK_HOME}/conf/spark-defaults.conf && \
     echo "spark.sql.ansi.enabled true" >> ${SPARK_HOME}/conf/spark-defaults.conf
 
-# Script de inicialização atualizado para Spark 4.0
+# Script de inicialização
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
@@ -89,8 +108,11 @@ case "$1" in\n\
     echo "========================================"\n\
     ${SPARK_HOME}/sbin/start-connect-server.sh \\\n\
       --packages io.delta:delta-spark_${SCALA_VERSION}:${DELTA_VERSION} \\\n\
-      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \\\n\
-      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog &\n\
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \\\n\
+      --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \\\n\
+      --conf spark.sql.catalog.iceberg=org.apache.iceberg.spark.SparkCatalog \\\n\
+      --conf spark.sql.catalog.iceberg.type=hadoop \\\n\
+      --conf spark.sql.catalog.iceberg.warehouse=/data/iceberg-warehouse &\n\
     sleep 5\n\
     echo ""\n\
     echo "========================================"\n\
@@ -102,6 +124,8 @@ case "$1" in\n\
     echo "Spark Master UI: http://localhost:8080"\n\
     echo "History Server: http://localhost:18080"\n\
     echo "Spark Connect: grpc://localhost:15002"\n\
+    echo "Delta Lake: Enabled"\n\
+    echo "Apache Iceberg: Enabled"\n\
     echo "========================================"\n\
     tail -f ${SPARK_HOME}/logs/*\n\
     ;;\n\
@@ -136,7 +160,12 @@ case "$1" in\n\
     echo "========================================"\n\
     echo "Iniciando Spark Connect Server..."\n\
     echo "========================================"\n\
-    ${SPARK_HOME}/sbin/start-connect-server.sh --packages io.delta:delta-spark_${SCALA_VERSION}:${DELTA_VERSION}\n\
+    ${SPARK_HOME}/sbin/start-connect-server.sh \\\n\
+      --packages io.delta:delta-spark_${SCALA_VERSION}:${DELTA_VERSION} \\\n\
+      --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \\\n\
+      --conf spark.sql.catalog.iceberg=org.apache.iceberg.spark.SparkCatalog \\\n\
+      --conf spark.sql.catalog.iceberg.type=hadoop \\\n\
+      --conf spark.sql.catalog.iceberg.warehouse=/data/iceberg-warehouse\n\
     echo ""\n\
     echo "========================================"\n\
     echo "Spark Connect: grpc://localhost:15002"\n\
