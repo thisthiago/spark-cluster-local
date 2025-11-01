@@ -11,7 +11,6 @@ print("=" * 70)
 print("Delta Lake vs Apache Iceberg - Comparação Prática")
 print("=" * 70)
 
-# Criar SparkSession com ambos configurados
 spark = SparkSession.builder \
     .appName("Delta-vs-Iceberg-Comparison") \
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension,org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
@@ -21,7 +20,6 @@ spark = SparkSession.builder \
     .config("spark.sql.catalog.iceberg.warehouse", "/data/iceberg-warehouse") \
     .getOrCreate()
 
-# Dados de exemplo
 data = [
     (1, "Produto A", 100, 10.50, "2025-10-20"),
     (2, "Produto B", 200, 20.00, "2025-10-21"),
@@ -40,8 +38,6 @@ df.show()
 print("\n" + "=" * 70)
 print("🔷 DELTA LAKE")
 print("=" * 70)
-
-# 1. Criar tabela Delta
 print("\n1. Criando tabela Delta...")
 start = time.time()
 delta_path = "/data/delta/produtos"
@@ -49,7 +45,6 @@ df.write.format("delta").mode("overwrite").save(delta_path)
 delta_create_time = time.time() - start
 print(f"✓ Tabela Delta criada em {delta_create_time:.3f}s")
 
-# 2. Ler Delta
 print("\n2. Lendo tabela Delta...")
 start = time.time()
 df_delta = spark.read.format("delta").load(delta_path)
@@ -57,7 +52,6 @@ delta_read_time = time.time() - start
 print(f"✓ Leitura concluída em {delta_read_time:.3f}s")
 print(f"   Registros: {df_delta.count()}")
 
-# 3. Update Delta
 print("\n3. Update em Delta...")
 start = time.time()
 from delta.tables import DeltaTable
@@ -69,14 +63,12 @@ deltaTable.update(
 delta_update_time = time.time() - start
 print(f"✓ Update concluído em {delta_update_time:.3f}s")
 
-# 4. Delete Delta
 print("\n4. Delete em Delta...")
 start = time.time()
 deltaTable.delete("id = 5")
 delta_delete_time = time.time() - start
 print(f"✓ Delete concluído em {delta_delete_time:.3f}s")
 
-# 5. Merge Delta
 print("\n5. Merge (Upsert) em Delta...")
 start = time.time()
 updates = spark.createDataFrame([
@@ -93,14 +85,12 @@ deltaTable.alias("target").merge(
 delta_merge_time = time.time() - start
 print(f"✓ Merge concluído em {delta_merge_time:.3f}s")
 
-# 6. Time Travel Delta
 print("\n6. Time Travel em Delta...")
 history = deltaTable.history()
 print(f"   Versões disponíveis: {history.count()}")
 df_v0 = spark.read.format("delta").option("versionAsOf", 0).load(delta_path)
 print(f"   Registros na versão 0: {df_v0.count()}")
 
-# 7. Schema Evolution Delta
 print("\n7. Schema Evolution em Delta...")
 start = time.time()
 df_new_schema = spark.createDataFrame([
@@ -116,7 +106,6 @@ print("\n" + "=" * 70)
 print("🔶 APACHE ICEBERG")
 print("=" * 70)
 
-# 1. Criar tabela Iceberg
 print("\n1. Criando tabela Iceberg...")
 start = time.time()
 spark.sql("CREATE NAMESPACE IF NOT EXISTS iceberg.comparacao")
@@ -126,7 +115,6 @@ df.write.format("iceberg") \
 iceberg_create_time = time.time() - start
 print(f"✓ Tabela Iceberg criada em {iceberg_create_time:.3f}s")
 
-# 2. Ler Iceberg
 print("\n2. Lendo tabela Iceberg...")
 start = time.time()
 df_iceberg = spark.table("iceberg.comparacao.produtos")
@@ -134,7 +122,6 @@ iceberg_read_time = time.time() - start
 print(f"✓ Leitura concluída em {iceberg_read_time:.3f}s")
 print(f"   Registros: {df_iceberg.count()}")
 
-# 3. Update Iceberg
 print("\n3. Update em Iceberg...")
 start = time.time()
 spark.sql("""
@@ -145,14 +132,12 @@ spark.sql("""
 iceberg_update_time = time.time() - start
 print(f"✓ Update concluído em {iceberg_update_time:.3f}s")
 
-# 4. Delete Iceberg
 print("\n4. Delete em Iceberg...")
 start = time.time()
 spark.sql("DELETE FROM iceberg.comparacao.produtos WHERE id = 5")
 iceberg_delete_time = time.time() - start
 print(f"✓ Delete concluído em {iceberg_delete_time:.3f}s")
 
-# 5. Merge Iceberg
 print("\n5. Merge (Upsert) em Iceberg...")
 start = time.time()
 updates.createOrReplaceTempView("updates")
@@ -166,7 +151,6 @@ spark.sql("""
 iceberg_merge_time = time.time() - start
 print(f"✓ Merge concluído em {iceberg_merge_time:.3f}s")
 
-# 6. Time Travel Iceberg
 print("\n6. Time Travel em Iceberg...")
 snapshots = spark.sql("SELECT * FROM iceberg.comparacao.produtos.snapshots")
 print(f"   Snapshots disponíveis: {snapshots.count()}")
@@ -175,7 +159,6 @@ df_snap = spark.read.option("snapshot-id", first_snapshot) \
     .table("iceberg.comparacao.produtos")
 print(f"   Registros no primeiro snapshot: {df_snap.count()}")
 
-# 7. Schema Evolution Iceberg
 print("\n7. Schema Evolution em Iceberg...")
 start = time.time()
 spark.sql("""
@@ -298,37 +281,6 @@ if delta_count == iceberg_count:
     print("\n   ✅ Ambos têm a mesma quantidade de registros!")
 else:
     print("\n   ⚠️  Diferença na quantidade de registros")
-
-# ========== RECOMENDAÇÕES ==========
-print("\n" + "=" * 70)
-print("💡 RECOMENDAÇÕES FINAIS")
-print("=" * 70)
-print("""
-Para um cluster Spark moderno, considere:
-
-1. 🎯 CENÁRIO ÚNICO (Uma engine):
-   → Use Delta Lake se já está no ecossistema Databricks
-   → Use Iceberg se prefere Apache open source
-
-2. 🌐 CENÁRIO MULTI-ENGINE (Spark + Trino + Flink):
-   → Use Iceberg para máxima compatibilidade
-
-3. 🚀 PERFORMANCE CRÍTICA:
-   → Delta Lake com Liquid Clustering (Spark 4.0)
-   → Iceberg com Sort Order bem configurado
-
-4. 🔄 EVOLUTIVO (Schema/Partition changes frequentes):
-   → Iceberg para Partition Evolution
-   → Delta Lake para Schema Evolution simples
-
-5. 💰 CUSTO (Storage):
-   → Ambos são eficientes com compaction
-   → Iceberg pode ser ligeiramente mais eficiente em metadata
-
-🏆 VENCEDOR GERAL: Depende do seu caso de uso!
-   • Delta Lake: Melhor para ecosistema Databricks
-   • Iceberg: Melhor para multi-engine e neutralidade
-""")
 
 print("\n" + "=" * 70)
 print("✅ Comparação concluída!")

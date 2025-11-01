@@ -10,7 +10,6 @@ print("=" * 70)
 print("Apache Iceberg com Spark 4.0 - Exemplo Completo")
 print("=" * 70)
 
-# Criar SparkSession com Iceberg e Delta Lake
 spark = SparkSession.builder \
     .remote("sc://localhost:15002") \
     .appName("Iceberg-Example") \
@@ -26,12 +25,10 @@ print(f"✓ Iceberg Catalog: hadoop")
 print(f"✓ Warehouse: /data/iceberg-warehouse")
 print("=" * 70)
 
-# Criar namespace (database) no Iceberg
 print("\n1. Criando namespace 'vendas' no Iceberg...")
 spark.sql("CREATE NAMESPACE IF NOT EXISTS iceberg.vendas")
 print("✓ Namespace criado!")
 
-# Criar tabela Iceberg
 print("\n2. Criando tabela Iceberg 'pedidos'...")
 spark.sql("""
     CREATE TABLE IF NOT EXISTS iceberg.vendas.pedidos (
@@ -47,7 +44,6 @@ spark.sql("""
 """)
 print("✓ Tabela criada com particionamento por dia!")
 
-# Inserir dados
 print("\n3. Inserindo dados na tabela Iceberg...")
 spark.sql("""
     INSERT INTO iceberg.vendas.pedidos VALUES
@@ -59,18 +55,15 @@ spark.sql("""
 """)
 print("✓ 5 pedidos inseridos!")
 
-# Consultar dados
 print("\n4. Consultando tabela Iceberg:")
 print("\n" + "=" * 70)
 spark.sql("SELECT * FROM iceberg.vendas.pedidos ORDER BY pedido_id").show()
 
-# Usar DataFrame API
 print("\n5. Usando DataFrame API com Iceberg:")
 df = spark.table("iceberg.vendas.pedidos")
 print(f"\nTotal de pedidos: {df.count()}")
 print(f"Valor total: R$ {df.agg({'valor': 'sum'}).collect()[0][0]}")
 
-# Update - Feature do Iceberg
 print("\n6. Atualizando status de pedido...")
 spark.sql("""
     UPDATE iceberg.vendas.pedidos
@@ -79,7 +72,6 @@ spark.sql("""
 """)
 print("✓ Status atualizado!")
 
-# Delete - Feature do Iceberg
 print("\n7. Deletando pedido cancelado...")
 spark.sql("""
     DELETE FROM iceberg.vendas.pedidos
@@ -91,7 +83,6 @@ print("\n" + "=" * 70)
 print("Dados após UPDATE e DELETE:")
 spark.sql("SELECT * FROM iceberg.vendas.pedidos ORDER BY pedido_id").show()
 
-# Merge Into - Feature do Iceberg
 print("\n8. Usando MERGE INTO (Upsert)...")
 spark.sql("""
     MERGE INTO iceberg.vendas.pedidos t
@@ -106,7 +97,6 @@ spark.sql("""
 """)
 print("✓ Merge executado!")
 
-# Schema Evolution
 print("\n9. Testando Schema Evolution...")
 spark.sql("""
     ALTER TABLE iceberg.vendas.pedidos 
@@ -114,7 +104,6 @@ spark.sql("""
 """)
 print("✓ Nova coluna 'desconto' adicionada!")
 
-# Inserir com nova coluna
 spark.sql("""
     INSERT INTO iceberg.vendas.pedidos VALUES
     (7, 'Roberto Silva', 'Cadeira Gamer', 1, 1500.00, 
@@ -126,13 +115,11 @@ print("\n" + "=" * 70)
 print("Dados com nova coluna 'desconto':")
 spark.sql("SELECT * FROM iceberg.vendas.pedidos ORDER BY pedido_id").show()
 
-# Time Travel - Feature do Iceberg
 print("\n10. Time Travel - Histórico de snapshots...")
 snapshots = spark.sql("SELECT * FROM iceberg.vendas.pedidos.snapshots")
 print("\nSnapshots disponíveis:")
 snapshots.select("committed_at", "snapshot_id", "operation", "summary").show(truncate=False)
 
-# Consultar snapshot específico
 print("\n11. Consultando snapshot anterior (Time Travel)...")
 first_snapshot = snapshots.select("snapshot_id").first()[0]
 print(f"Snapshot ID: {first_snapshot}")
@@ -144,22 +131,18 @@ df_old = spark.read \
 print(f"\nRegistros no primeiro snapshot: {df_old.count()}")
 df_old.show()
 
-# Metadata da tabela
 print("\n12. Metadata da tabela Iceberg:")
 print("\n" + "=" * 70)
 spark.sql("DESCRIBE EXTENDED iceberg.vendas.pedidos").show(truncate=False)
 
-# Files da tabela
 print("\n13. Arquivos da tabela (Data Files):")
 files = spark.sql("SELECT file_path, file_size_in_bytes, record_count FROM iceberg.vendas.pedidos.files")
 files.show(truncate=False)
 
-# Partitions
 print("\n14. Informações de partições:")
 partitions = spark.sql("SELECT partition, spec_id, record_count, file_count FROM iceberg.vendas.pedidos.partitions")
 partitions.show(truncate=False)
 
-# Comparação Delta vs Iceberg
 print("\n" + "=" * 70)
 print("COMPARAÇÃO: Delta Lake vs Apache Iceberg")
 print("=" * 70)
@@ -180,7 +163,6 @@ print("""
 └─────────────────────────┴─────────────────┴─────────────────┘
 """)
 
-# Estatísticas finais
 print("\n" + "=" * 70)
 print("Resumo da tabela Iceberg:")
 stats = spark.sql("""
